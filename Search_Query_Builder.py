@@ -283,9 +283,12 @@ if date_enabled:
         if reset_during:
             st.session_state.during_is_today = False
             st.session_state.during_is_yesterday = False
-            st.session_state.during_date = None
+            if 'during_date' in st.session_state:
+                del st.session_state.during_date
             st.session_state.during_year_only = ""
+            st.session_state.during_year_only_select = ""
             st.session_state.during_month_selected = ""
+            st.session_state.during_month_select = ""
             st.rerun()
         
         # Handle quick date buttons
@@ -442,8 +445,11 @@ if date_enabled:
                 if 'start_date' in st.session_state:
                     del st.session_state.start_date
                 st.session_state.start_month_selected = ""
-                st.session_state.start_year = ""
+                st.session_state.start_month_select = ""
+                if 'start_year' in st.session_state:
+                    del st.session_state.start_year
                 st.session_state.start_year_only = ""
+                st.session_state.start_year_only_select = ""
                 st.rerun()
             
             # Initialize start date
@@ -564,8 +570,11 @@ if date_enabled:
                 if 'end_date' in st.session_state:
                     del st.session_state.end_date
                 st.session_state.end_month_selected = ""
-                st.session_state.end_year = ""
+                st.session_state.end_month_select = ""
+                if 'end_year' in st.session_state:
+                    del st.session_state.end_year
                 st.session_state.end_year_only = ""
+                st.session_state.end_year_only_select = ""
                 st.rerun()
             
             # Initialize end date
