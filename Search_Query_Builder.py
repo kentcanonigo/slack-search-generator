@@ -722,28 +722,15 @@ if st.session_state.channel_add_error:
     # Clear after displaying
     st.session_state.channel_add_error = None
 
-# Add CSS to align button with input field
-st.markdown("""
-    <style>
-        form[data-testid="stForm"] div[data-testid="column"]:nth-of-type(2) button[kind="formSubmit"] {
-            margin-top: 2.25rem;
-        }
-    </style>
-""", unsafe_allow_html=True)
-
 # Use form to handle Enter key submission
 with st.form("add_channel_form", clear_on_submit=True):
-    col1, col2 = st.columns([3, 1])
+    new_channel = st.text_input(
+        "Add a new channel",
+        placeholder="e.g., general, deployments, random",
+        key="new_channel_input"
+    )
     
-    with col1:
-        new_channel = st.text_input(
-            "Add a new channel",
-            placeholder="e.g., general, deployments, random",
-            key="new_channel_input"
-        )
-    
-    with col2:
-        submitted = st.form_submit_button("Add Channel", type="primary", use_container_width=True)
+    submitted = st.form_submit_button("Add Channel", type="primary", use_container_width=True)
     
     if submitted:
         if new_channel:
