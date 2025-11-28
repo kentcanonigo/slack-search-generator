@@ -52,8 +52,11 @@ def save_channel(channel):
     ensure_data_directory()
     channels = load_channels()
     
-    # Trim whitespace and check for duplicates
+    # Trim whitespace and remove leading # if present
     channel = channel.strip()
+    if channel.startswith("#"):
+        channel = channel[1:].strip()
+    
     if not channel:
         return False, "Channel name cannot be empty"
     
@@ -85,7 +88,11 @@ def update_channel(old_channel, new_channel):
     if old_channel not in channels:
         return False, f"Channel '{old_channel}' not found"
     
+    # Trim whitespace and remove leading # if present
     new_channel = new_channel.strip()
+    if new_channel.startswith("#"):
+        new_channel = new_channel[1:].strip()
+    
     if not new_channel:
         return False, "Channel name cannot be empty"
     
@@ -145,7 +152,7 @@ def build_query(channel, from_user, file_type, date_enabled, start_date, start_t
 
 # Page configuration
 st.set_page_config(
-    page_title="Slack Search Query Wizard",
+    page_title="Search Query Builder",
     page_icon="🔍",
     layout="wide"
 )
@@ -159,38 +166,6 @@ st.session_state.channels_cache = load_channels()
 
 # Load channels from cache
 channels = st.session_state.channels_cache
-
-# Channel Management Section
-st.header("📋 Channel Management")
-
-col1, col2 = st.columns([3, 1])
-
-with col1:
-    new_channel = st.text_input(
-        "Add a new channel",
-        placeholder="e.g., general, deployments, random",
-        key="new_channel_input"
-    )
-
-with col2:
-    st.write("")  # Spacing
-    add_button = st.button("Add Channel", type="primary")
-
-if add_button:
-    if new_channel:
-        success, message = save_channel(new_channel)
-        if success:
-            # Update cache immediately
-            st.session_state.channels_cache = load_channels()
-            st.success(f"✅ {message}")
-            st.toast(f"Channel '{new_channel.strip()}' has been added!", icon="✅")
-            st.rerun()
-        else:
-            st.error(message)
-    else:
-        st.warning("Please enter a channel name")
-
-st.markdown("💡 [Manage all channels →](pages/Channels.py)")
 
 # Search Query Builder Section
 st.header("🔍 Search Query Builder")
@@ -294,4 +269,37 @@ if query:
     st.info("💡 Copy the query above and paste it into Slack's search bar")
 else:
     st.info("👆 Fill in the fields above to generate a search query")
+
+# Channel Management Section (moved to bottom)
+st.divider()
+st.header("📋 Channel Management")
+
+col1, col2 = st.columns([3, 1])
+
+with col1:
+    new_channel = st.text_input(
+        "Add a new channel",
+        placeholder="e.g., general, deployments, random",
+        key="new_channel_input"
+    )
+
+with col2:
+    st.write("")  # Spacing
+    add_button = st.button("Add Channel", type="primary")
+
+if add_button:
+    if new_channel:
+        success, message = save_channel(new_channel)
+        if success:
+            # Update cache immediately
+            st.session_state.channels_cache = load_channels()
+            st.success(f"✅ {message}")
+            st.toast(f"Channel '{new_channel.strip()}' has been added!", icon="✅")
+            st.rerun()
+        else:
+            st.error(message)
+    else:
+        st.warning("Please enter a channel name")
+
+st.markdown("💡 [Manage all channels →](pages/Channels.py)")
 

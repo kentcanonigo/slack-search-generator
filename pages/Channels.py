@@ -55,7 +55,11 @@ def update_channel(old_channel, new_channel):
     if old_channel not in channels:
         return False, f"Channel '{old_channel}' not found"
     
+    # Trim whitespace and remove leading # if present
     new_channel = new_channel.strip()
+    if new_channel.startswith("#"):
+        new_channel = new_channel[1:].strip()
+    
     if not new_channel:
         return False, "Channel name cannot be empty"
     
@@ -75,8 +79,11 @@ def save_channel(channel):
     ensure_data_directory()
     channels = load_channels()
     
-    # Trim whitespace and check for duplicates
+    # Trim whitespace and remove leading # if present
     channel = channel.strip()
+    if channel.startswith("#"):
+        channel = channel[1:].strip()
+    
     if not channel:
         return False, "Channel name cannot be empty"
     
