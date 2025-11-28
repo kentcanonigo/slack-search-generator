@@ -312,7 +312,6 @@ if date_enabled:
             if during_date_format == "Full Date":
                 during_date = st.date_input(
                     "Date",
-                    value=st.session_state.during_date,
                     help="Show messages during this date",
                     key="during_date"
                 )
@@ -440,15 +439,16 @@ if date_enabled:
             if reset_start:
                 st.session_state.start_is_today = False
                 st.session_state.start_is_yesterday = False
-                st.session_state.start_date_value = None
+                if 'start_date' in st.session_state:
+                    del st.session_state.start_date
                 st.session_state.start_month_selected = ""
                 st.session_state.start_year = ""
                 st.session_state.start_year_only = ""
                 st.rerun()
             
             # Initialize start date
-            if 'start_date_value' not in st.session_state:
-                st.session_state.start_date_value = datetime.now().date()
+            if 'start_date' not in st.session_state:
+                st.session_state.start_date = datetime.now().date()
             
             # Handle quick date buttons
             if use_today_start:
@@ -472,19 +472,15 @@ if date_enabled:
             # If today/yesterday is selected, don't show date inputs
             if not st.session_state.start_is_today and not st.session_state.start_is_yesterday:
                 if start_date_format == "Full Date":
-                    # Initialize start_date_value if not exists
-                    if 'start_date_value' not in st.session_state:
-                        st.session_state.start_date_value = datetime.now().date()
+                    # Initialize start_date if not exists
+                    if 'start_date' not in st.session_state:
+                        st.session_state.start_date = datetime.now().date()
                     start_date = st.date_input(
                         "From Date",
-                        value=st.session_state.start_date_value,
                         help="Show messages after this date",
                         key="start_date"
                     )
                     # Note: st.session_state.start_date is automatically managed by the widget
-                    # Use the widget's return value, which is the same as st.session_state.start_date
-                    # Update start_date_value for when widget is not shown
-                    st.session_state.start_date_value = start_date
                 elif start_date_format == "Month":
                     months = [""] + ["January", "February", "March", "April", "May", "June",
                              "July", "August", "September", "October", "November", "December"]
@@ -565,15 +561,16 @@ if date_enabled:
             if reset_end:
                 st.session_state.end_is_today = False
                 st.session_state.end_is_yesterday = False
-                st.session_state.end_date_value = None
+                if 'end_date' in st.session_state:
+                    del st.session_state.end_date
                 st.session_state.end_month_selected = ""
                 st.session_state.end_year = ""
                 st.session_state.end_year_only = ""
                 st.rerun()
             
             # Initialize end date
-            if 'end_date_value' not in st.session_state:
-                st.session_state.end_date_value = None
+            if 'end_date' not in st.session_state:
+                st.session_state.end_date = None
             
             # Handle quick date buttons
             if use_today_end:
@@ -597,19 +594,15 @@ if date_enabled:
             # If today/yesterday is selected, don't show date inputs
             if not st.session_state.end_is_today and not st.session_state.end_is_yesterday:
                 if end_date_format == "Full Date":
-                    # Initialize end_date_value if not exists
-                    if 'end_date_value' not in st.session_state:
-                        st.session_state.end_date_value = None
+                    # Initialize end_date if not exists
+                    if 'end_date' not in st.session_state:
+                        st.session_state.end_date = None
                     end_date = st.date_input(
                         "To Date",
-                        value=st.session_state.end_date_value,
                         help="Show messages before this date (optional)",
                         key="end_date"
                     )
                     # Note: st.session_state.end_date is automatically managed by the widget
-                    # Use the widget's return value, which is the same as st.session_state.end_date
-                    # Update end_date_value for when widget is not shown
-                    st.session_state.end_date_value = end_date
                 elif end_date_format == "Month":
                     months = [""] + ["January", "February", "March", "April", "May", "June",
                              "July", "August", "September", "October", "November", "December"]
