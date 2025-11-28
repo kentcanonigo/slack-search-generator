@@ -109,14 +109,15 @@ def update_channel(old_channel, new_channel):
 
 def format_date_for_slack(date_obj, format_type, is_today=False, is_yesterday=False):
     """Format date according to the selected format type."""
-    if date_obj is None:
-        return None
-    
-    # Handle special cases for "today" and "yesterday"
+    # Handle special cases for "today" and "yesterday" first
     if is_today:
         return "today"
     if is_yesterday:
         return "yesterday"
+    
+    # If date is None or empty, return None (won't be added to query)
+    if date_obj is None:
+        return None
     
     if format_type == "Full Date":
         return date_obj.strftime("%Y-%m-%d")
@@ -149,17 +150,22 @@ def build_query(channel, from_user, file_type, date_enabled, use_during, during_
         query_parts.append(FILE_TYPE_MAPPING[file_type])
     
     if date_enabled:
-        if use_during and during_date:
-            date_str = format_date_for_slack(during_date, during_date_format, during_is_today, during_is_yesterday)
-            query_parts.append(f"during:{date_str}")
+        if use_during:
+            # Check if today/yesterday is selected, or if during_date is set
+            if during_is_today or during_is_yesterday or during_date:
+                date_str = format_date_for_slack(during_date, during_date_format, during_is_today, during_is_yesterday)
+                if date_str:  # Only add if date_str is not None
+                    query_parts.append(f"during:{date_str}")
         else:
-            if start_date:
+            if start_date or start_is_today or start_is_yesterday:
                 date_str = format_date_for_slack(start_date, start_date_format, start_is_today, start_is_yesterday)
-                query_parts.append(f"after:{date_str}")
+                if date_str:  # Only add if date_str is not None
+                    query_parts.append(f"after:{date_str}")
             
-            if end_date:
+            if end_date or end_is_today or end_is_yesterday:
                 date_str = format_date_for_slack(end_date, end_date_format, end_is_today, end_is_yesterday)
-                query_parts.append(f"before:{date_str}")
+                if date_str:  # Only add if date_str is not None
+                    query_parts.append(f"before:{date_str}")
     
     if keywords:
         keywords_clean = keywords.strip()
@@ -253,11 +259,34 @@ if date_enabled:
             st.session_state.during_date = datetime.now().date()
         
         # Quick date options
-        quick_date_col1, quick_date_col2 = st.columns(2)
+        quick_date_col1, quick_date_col2, quick_date_col3 = st.columns(3)
         with quick_date_col1:
             use_today = st.button("Today", key="during_today_btn", use_container_width=True)
         with quick_date_col2:
             use_yesterday = st.button("Yesterday", key="during_yesterday_btn", use_container_width=True)
+        with quick_date_col3:
+            reset_during = st.button("Reset", key="reset_during_btn", use_container_width=True)
+            # Style reset button red
+            st.markdown("""
+                <style>
+                    button[key="reset_during_btn"] {
+                        background-color: #ff4444 !important;
+                        color: white !important;
+                    }
+                    button[key="reset_during_btn"]:hover {
+                        background-color: #cc0000 !important;
+                    }
+                </style>
+            """, unsafe_allow_html=True)
+        
+        # Handle reset button
+        if reset_during:
+            st.session_state.during_is_today = False
+            st.session_state.during_is_yesterday = False
+            st.session_state.during_date = None
+            st.session_state.during_year_only = ""
+            st.session_state.during_month_selected = ""
+            st.rerun()
         
         # Handle quick date buttons
         if use_today:
@@ -287,44 +316,67 @@ if date_enabled:
                     help="Show messages during this date",
                     key="during_date"
                 )
-                st.session_state.during_date = during_date
+                # Note: st.session_state.during_date is automatically managed by the widget
             elif during_date_format == "Month":
-                months = ["January", "February", "March", "April", "May", "June",
+                months = [""] + ["January", "February", "March", "April", "May", "June",
                          "July", "August", "September", "October", "November", "December"]
-                current_month_idx = datetime.now().month - 1
+                if 'during_month_selected' not in st.session_state:
+                    st.session_state.during_month_selected = ""
+                # Ensure the value is in the list, default to empty string
+                if st.session_state.during_month_selected not in months:
+                    st.session_state.during_month_selected = ""
+                month_index = months.index(st.session_state.during_month_selected)
                 
                 selected_month_name = st.selectbox(
                     "Month",
                     options=months,
-                    index=current_month_idx,
+                    index=month_index,
                     key="during_month_select"
                 )
-                selected_month_idx = months.index(selected_month_name) + 1
-                current_year = datetime.now().year
-                during_date = datetime(current_year, selected_month_idx, 1).date()
+                st.session_state.during_month_selected = selected_month_name
+                if selected_month_name and selected_month_name != "":
+                    selected_month_idx = months.index(selected_month_name)
+                    current_year = datetime.now().year
+                    during_date = datetime(current_year, selected_month_idx, 1).date()
+                else:
+                    during_date = None
             else:  # Year
                 current_year = datetime.now().year
-                years = list(range(current_year - 20, current_year + 21))
+                years = [""] + list(range(current_year - 20, current_year + 21))
                 if 'during_year_only' not in st.session_state:
-                    st.session_state.during_year_only = current_year
-                if st.session_state.during_year_only not in years:
-                    st.session_state.during_year_only = current_year
+                    st.session_state.during_year_only = ""
+                # Ensure the value is in the list, default to empty string (index 0)
+                current_value = st.session_state.during_year_only
+                if current_value == "" or current_value in years:
+                    year_index = years.index(current_value) if current_value != "" else 0
+                else:
+                    st.session_state.during_year_only = ""
+                    year_index = 0
                 selected_year = st.selectbox(
                     "Year",
                     options=years,
-                    index=years.index(st.session_state.during_year_only),
+                    index=year_index,
                     key="during_year_only_select"
                 )
                 st.session_state.during_year_only = selected_year
-                during_date = datetime(st.session_state.during_year_only, 1, 1).date()
+                if selected_year and selected_year != "":
+                    during_date = datetime(selected_year, 1, 1).date()
+                else:
+                    during_date = None
         else:
             during_date = datetime.now().date()  # Dummy value, won't be used
         
+        # Assign during flags from session state
+        during_is_today = st.session_state.during_is_today
+        during_is_yesterday = st.session_state.during_is_yesterday
+        
         # Set start/end to None when using during
         start_date = None
+        start_date_format = "Full Date"
         start_is_today = False
         start_is_yesterday = False
         end_date = None
+        end_date_format = "Full Date"
         end_is_today = False
         end_is_yesterday = False
     else:
@@ -364,11 +416,35 @@ if date_enabled:
             st.markdown("**Start Date**")
             
             # Quick date options
-            quick_date_col1, quick_date_col2 = st.columns(2)
+            quick_date_col1, quick_date_col2, quick_date_col3 = st.columns(3)
             with quick_date_col1:
                 use_today_start = st.button("Today", key="start_today_btn", use_container_width=True)
             with quick_date_col2:
                 use_yesterday_start = st.button("Yesterday", key="start_yesterday_btn", use_container_width=True)
+            with quick_date_col3:
+                reset_start = st.button("Reset", key="reset_start_btn", use_container_width=True)
+                # Style reset button red
+                st.markdown("""
+                    <style>
+                        button[key="reset_start_btn"] {
+                            background-color: #ff4444 !important;
+                            color: white !important;
+                        }
+                        button[key="reset_start_btn"]:hover {
+                            background-color: #cc0000 !important;
+                        }
+                    </style>
+                """, unsafe_allow_html=True)
+            
+            # Handle reset button
+            if reset_start:
+                st.session_state.start_is_today = False
+                st.session_state.start_is_yesterday = False
+                st.session_state.start_date_value = None
+                st.session_state.start_month_selected = ""
+                st.session_state.start_year = ""
+                st.session_state.start_year_only = ""
+                st.rerun()
             
             # Initialize start date
             if 'start_date_value' not in st.session_state:
@@ -396,44 +472,65 @@ if date_enabled:
             # If today/yesterday is selected, don't show date inputs
             if not st.session_state.start_is_today and not st.session_state.start_is_yesterday:
                 if start_date_format == "Full Date":
+                    # Initialize start_date_value if not exists
+                    if 'start_date_value' not in st.session_state:
+                        st.session_state.start_date_value = datetime.now().date()
                     start_date = st.date_input(
                         "From Date",
                         value=st.session_state.start_date_value,
                         help="Show messages after this date",
                         key="start_date"
                     )
+                    # Note: st.session_state.start_date is automatically managed by the widget
+                    # Use the widget's return value, which is the same as st.session_state.start_date
+                    # Update start_date_value for when widget is not shown
                     st.session_state.start_date_value = start_date
                 elif start_date_format == "Month":
-                    months = ["January", "February", "March", "April", "May", "June",
+                    months = [""] + ["January", "February", "March", "April", "May", "June",
                              "July", "August", "September", "October", "November", "December"]
-                    # Get current month index
-                    current_month_idx = datetime.now().month - 1
+                    if 'start_month_selected' not in st.session_state:
+                        st.session_state.start_month_selected = ""
+                    # Ensure the value is in the list, default to empty string
+                    if st.session_state.start_month_selected not in months:
+                        st.session_state.start_month_selected = ""
+                    month_index = months.index(st.session_state.start_month_selected)
                     
                     selected_month_name = st.selectbox(
                         "Month",
                         options=months,
-                        index=current_month_idx,
+                        index=month_index,
                         key="start_month_select"
                     )
-                    # Create date object from selected month (using current year, but year won't be used in query)
-                    selected_month_idx = months.index(selected_month_name) + 1
-                    current_year = datetime.now().year
-                    start_date = datetime(current_year, selected_month_idx, 1).date()
+                    st.session_state.start_month_selected = selected_month_name
+                    if selected_month_name and selected_month_name != "":
+                        selected_month_idx = months.index(selected_month_name)
+                        current_year = datetime.now().year
+                        start_date = datetime(current_year, selected_month_idx, 1).date()
+                    else:
+                        start_date = None
                 else:  # Year
                     current_year = datetime.now().year
-                    years = list(range(current_year - 20, current_year + 21))
-                    # Ensure the year is in the list, otherwise use current year
-                    if st.session_state.start_year_only not in years:
-                        st.session_state.start_year_only = current_year
+                    years = [""] + list(range(current_year - 20, current_year + 21))
+                    if 'start_year_only' not in st.session_state:
+                        st.session_state.start_year_only = ""
+                    # Ensure the value is in the list, default to empty string (index 0)
+                    current_value = st.session_state.start_year_only
+                    if current_value == "" or current_value in years:
+                        year_index = years.index(current_value) if current_value != "" else 0
+                    else:
+                        st.session_state.start_year_only = ""
+                        year_index = 0
                     selected_year = st.selectbox(
                         "Year",
                         options=years,
-                        index=years.index(st.session_state.start_year_only),
+                        index=year_index,
                         key="start_year_only_select"
                     )
                     st.session_state.start_year_only = selected_year
-                    # Create a date object from year (January 1st)
-                    start_date = datetime(st.session_state.start_year_only, 1, 1).date()
+                    if selected_year and selected_year != "":
+                        start_date = datetime(selected_year, 1, 1).date()
+                    else:
+                        start_date = None
             else:
                 start_date = datetime.now().date()  # Dummy value, won't be used
             
@@ -444,11 +541,35 @@ if date_enabled:
             st.markdown("**End Date**")
             
             # Quick date options
-            quick_date_col1, quick_date_col2 = st.columns(2)
+            quick_date_col1, quick_date_col2, quick_date_col3 = st.columns(3)
             with quick_date_col1:
                 use_today_end = st.button("Today", key="end_today_btn", use_container_width=True)
             with quick_date_col2:
                 use_yesterday_end = st.button("Yesterday", key="end_yesterday_btn", use_container_width=True)
+            with quick_date_col3:
+                reset_end = st.button("Reset", key="reset_end_btn", use_container_width=True)
+                # Style reset button red
+                st.markdown("""
+                    <style>
+                        button[key="reset_end_btn"] {
+                            background-color: #ff4444 !important;
+                            color: white !important;
+                        }
+                        button[key="reset_end_btn"]:hover {
+                            background-color: #cc0000 !important;
+                        }
+                    </style>
+                """, unsafe_allow_html=True)
+            
+            # Handle reset button
+            if reset_end:
+                st.session_state.end_is_today = False
+                st.session_state.end_is_yesterday = False
+                st.session_state.end_date_value = None
+                st.session_state.end_month_selected = ""
+                st.session_state.end_year = ""
+                st.session_state.end_year_only = ""
+                st.rerun()
             
             # Initialize end date
             if 'end_date_value' not in st.session_state:
@@ -476,44 +597,65 @@ if date_enabled:
             # If today/yesterday is selected, don't show date inputs
             if not st.session_state.end_is_today and not st.session_state.end_is_yesterday:
                 if end_date_format == "Full Date":
+                    # Initialize end_date_value if not exists
+                    if 'end_date_value' not in st.session_state:
+                        st.session_state.end_date_value = None
                     end_date = st.date_input(
                         "To Date",
                         value=st.session_state.end_date_value,
                         help="Show messages before this date (optional)",
                         key="end_date"
                     )
+                    # Note: st.session_state.end_date is automatically managed by the widget
+                    # Use the widget's return value, which is the same as st.session_state.end_date
+                    # Update end_date_value for when widget is not shown
                     st.session_state.end_date_value = end_date
                 elif end_date_format == "Month":
-                    months = ["January", "February", "March", "April", "May", "June",
+                    months = [""] + ["January", "February", "March", "April", "May", "June",
                              "July", "August", "September", "October", "November", "December"]
-                    # Get current month index
-                    current_month_idx = datetime.now().month - 1
+                    if 'end_month_selected' not in st.session_state:
+                        st.session_state.end_month_selected = ""
+                    # Ensure the value is in the list, default to empty string
+                    if st.session_state.end_month_selected not in months:
+                        st.session_state.end_month_selected = ""
+                    month_index = months.index(st.session_state.end_month_selected)
                     
                     selected_month_name = st.selectbox(
                         "Month",
                         options=months,
-                        index=current_month_idx,
+                        index=month_index,
                         key="end_month_select"
                     )
-                    # Create date object from selected month (using current year, but year won't be used in query)
-                    selected_month_idx = months.index(selected_month_name) + 1
-                    current_year = datetime.now().year
-                    end_date = datetime(current_year, selected_month_idx, 1).date()
+                    st.session_state.end_month_selected = selected_month_name
+                    if selected_month_name and selected_month_name != "":
+                        selected_month_idx = months.index(selected_month_name)
+                        current_year = datetime.now().year
+                        end_date = datetime(current_year, selected_month_idx, 1).date()
+                    else:
+                        end_date = None
                 else:  # Year
                     current_year = datetime.now().year
-                    years = list(range(current_year - 20, current_year + 21))
-                    # Ensure the year is in the list, otherwise use current year
-                    if st.session_state.end_year_only not in years:
-                        st.session_state.end_year_only = current_year
+                    years = [""] + list(range(current_year - 20, current_year + 21))
+                    if 'end_year_only' not in st.session_state:
+                        st.session_state.end_year_only = ""
+                    # Ensure the value is in the list, default to empty string (index 0)
+                    current_value = st.session_state.end_year_only
+                    if current_value == "" or current_value in years:
+                        year_index = years.index(current_value) if current_value != "" else 0
+                    else:
+                        st.session_state.end_year_only = ""
+                        year_index = 0
                     selected_year = st.selectbox(
                         "Year",
                         options=years,
-                        index=years.index(st.session_state.end_year_only),
+                        index=year_index,
                         key="end_year_only_select"
                     )
                     st.session_state.end_year_only = selected_year
-                    # Create a date object from year (January 1st)
-                    end_date = datetime(st.session_state.end_year_only, 1, 1).date()
+                    if selected_year and selected_year != "":
+                        end_date = datetime(selected_year, 1, 1).date()
+                    else:
+                        end_date = None
             else:
                 end_date = datetime.now().date()  # Dummy value, won't be used
             
@@ -580,6 +722,15 @@ if st.session_state.channel_add_error:
     # Clear after displaying
     st.session_state.channel_add_error = None
 
+# Add CSS to align button with input field
+st.markdown("""
+    <style>
+        form[data-testid="stForm"] div[data-testid="column"]:nth-of-type(2) button[kind="formSubmit"] {
+            margin-top: 2.25rem;
+        }
+    </style>
+""", unsafe_allow_html=True)
+
 # Use form to handle Enter key submission
 with st.form("add_channel_form", clear_on_submit=True):
     col1, col2 = st.columns([3, 1])
@@ -592,7 +743,6 @@ with st.form("add_channel_form", clear_on_submit=True):
         )
     
     with col2:
-        st.write("")  # Spacing
         submitted = st.form_submit_button("Add Channel", type="primary", use_container_width=True)
     
     if submitted:

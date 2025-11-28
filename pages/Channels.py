@@ -136,6 +136,15 @@ if st.session_state.channel_add_error:
     st.error(st.session_state.channel_add_error)
     st.session_state.channel_add_error = None
 
+# Add CSS to align button with input field
+st.markdown("""
+    <style>
+        form[data-testid="stForm"] div[data-testid="column"]:nth-of-type(2) button[kind="formSubmit"] {
+            margin-top: 2.25rem;
+        }
+    </style>
+""", unsafe_allow_html=True)
+
 # Use form to handle Enter key submission
 with st.form("add_channel_form", clear_on_submit=True):
     col1, col2 = st.columns([3, 1])
@@ -148,7 +157,6 @@ with st.form("add_channel_form", clear_on_submit=True):
         )
     
     with col2:
-        st.write("")  # Spacing
         submitted = st.form_submit_button("Add Channel", type="primary", use_container_width=True)
     
     if submitted:
