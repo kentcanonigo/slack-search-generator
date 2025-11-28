@@ -274,32 +274,56 @@ else:
 st.divider()
 st.header("📋 Channel Management")
 
-col1, col2 = st.columns([3, 1])
+# Initialize session state for channel add notification
+if 'channel_add_success' not in st.session_state:
+    st.session_state.channel_add_success = None
+if 'channel_add_error' not in st.session_state:
+    st.session_state.channel_add_error = None
 
-with col1:
-    new_channel = st.text_input(
-        "Add a new channel",
-        placeholder="e.g., general, deployments, random",
-        key="new_channel_input"
-    )
+# Display notifications if they exist
+if st.session_state.channel_add_success:
+    st.success(st.session_state.channel_add_success)
+    st.toast(st.session_state.channel_add_success, icon="✅")
+    # Clear after displaying
+    st.session_state.channel_add_success = None
 
-with col2:
-    st.write("")  # Spacing
-    add_button = st.button("Add Channel", type="primary")
+if st.session_state.channel_add_error:
+    st.error(st.session_state.channel_add_error)
+    # Clear after displaying
+    st.session_state.channel_add_error = None
 
-if add_button:
-    if new_channel:
-        success, message = save_channel(new_channel)
-        if success:
-            # Update cache immediately
-            st.session_state.channels_cache = load_channels()
-            st.success(f"✅ {message}")
-            st.toast(f"Channel '{new_channel.strip()}' has been added!", icon="✅")
-            st.rerun()
+# Use form to handle Enter key submission
+with st.form("add_channel_form", clear_on_submit=True):
+    col1, col2 = st.columns([3, 1])
+    
+    with col1:
+        new_channel = st.text_input(
+            "Add a new channel",
+            placeholder="e.g., general, deployments, random",
+            key="new_channel_input"
+        )
+    
+    with col2:
+        st.write("")  # Spacing
+        submitted = st.form_submit_button("Add Channel", type="primary", use_container_width=True)
+    
+    if submitted:
+        if new_channel:
+            success, message = save_channel(new_channel)
+            if success:
+                # Update cache immediately
+                st.session_state.channels_cache = load_channels()
+                channel_name = new_channel.strip()
+                if channel_name.startswith("#"):
+                    channel_name = channel_name[1:].strip()
+                st.session_state.channel_add_success = f"✅ Channel '{channel_name}' added successfully!"
+                st.rerun()
+            else:
+                st.session_state.channel_add_error = message
+                st.rerun()
         else:
-            st.error(message)
-    else:
-        st.warning("Please enter a channel name")
+            st.session_state.channel_add_error = "Please enter a channel name"
+            st.rerun()
 
 st.markdown("💡 [Manage all channels →](pages/Channels.py)")
 
