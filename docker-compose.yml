@@ -1,0 +1,11 @@
+version: '3.8'
+
+services:
+  slack-search-wizard:
+    build: .
+    ports:
+      - "8501:8501"
+    volumes:
+      - ./data:/app/data
+    restart: unless-stopped
+
