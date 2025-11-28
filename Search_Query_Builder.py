@@ -2,7 +2,7 @@ import streamlit as st
 import json
 import os
 from pathlib import Path
-from datetime import datetime, time
+from datetime import datetime, timedelta
 
 # Configuration
 DATA_DIR = Path("data")
@@ -107,7 +107,32 @@ def update_channel(old_channel, new_channel):
     return save_channels(channels)
 
 
-def build_query(channel, from_user, file_type, date_enabled, start_date, start_time, end_date, end_time, keywords):
+def format_date_for_slack(date_obj, format_type, is_today=False, is_yesterday=False):
+    """Format date according to the selected format type."""
+    if date_obj is None:
+        return None
+    
+    # Handle special cases for "today" and "yesterday"
+    if is_today:
+        return "today"
+    if is_yesterday:
+        return "yesterday"
+    
+    if format_type == "Full Date":
+        return date_obj.strftime("%Y-%m-%d")
+    elif format_type == "Month":
+        # Format as "January" with full month name only
+        month_names = ["January", "February", "March", "April", "May", "June",
+                      "July", "August", "September", "October", "November", "December"]
+        month_name = month_names[date_obj.month - 1]
+        return month_name
+    elif format_type == "Year":
+        return date_obj.strftime("%Y")
+    else:
+        return date_obj.strftime("%Y-%m-%d")
+
+
+def build_query(channel, from_user, file_type, date_enabled, use_during, during_date, during_date_format, during_is_today, during_is_yesterday, start_date, start_date_format, start_is_today, start_is_yesterday, end_date, end_date_format, end_is_today, end_is_yesterday, keywords):
     """Construct Slack search query string from form inputs."""
     query_parts = []
     
@@ -124,22 +149,16 @@ def build_query(channel, from_user, file_type, date_enabled, start_date, start_t
         query_parts.append(FILE_TYPE_MAPPING[file_type])
     
     if date_enabled:
-        if start_date:
-            # Format date with time if provided
-            if start_time:
-                datetime_str = datetime.combine(start_date, start_time).strftime("%Y-%m-%d %H:%M")
-                query_parts.append(f"after:{datetime_str}")
-            else:
-                date_str = start_date.strftime("%Y-%m-%d")
+        if use_during and during_date:
+            date_str = format_date_for_slack(during_date, during_date_format, during_is_today, during_is_yesterday)
+            query_parts.append(f"during:{date_str}")
+        else:
+            if start_date:
+                date_str = format_date_for_slack(start_date, start_date_format, start_is_today, start_is_yesterday)
                 query_parts.append(f"after:{date_str}")
-        
-        if end_date:
-            # Format date with time if provided
-            if end_time:
-                datetime_str = datetime.combine(end_date, end_time).strftime("%Y-%m-%d %H:%M")
-                query_parts.append(f"before:{datetime_str}")
-            else:
-                date_str = end_date.strftime("%Y-%m-%d")
+            
+            if end_date:
+                date_str = format_date_for_slack(end_date, end_date_format, end_is_today, end_is_yesterday)
                 query_parts.append(f"before:{date_str}")
     
     if keywords:
@@ -206,48 +225,308 @@ with col2:
 # Date Range Section (only show if enabled)
 if date_enabled:
     st.subheader("📅 Date Range")
-    date_col1, date_col2 = st.columns(2)
     
-    with date_col1:
-        st.markdown("**Start Date**")
-        start_date = st.date_input(
-            "From Date",
-            value=datetime.now().date(),
-            help="Show messages after this date",
-            key="start_date"
-        )
-        use_start_time = st.checkbox("Include start time", key="use_start_time", value=False)
-        start_time = None
-        if use_start_time:
-            start_time = st.time_input(
-                "From Time",
-                value=time(0, 0),
-                help="Specify start time",
-                key="start_time"
-            )
+    # Initialize date format preferences
+    if 'use_during' not in st.session_state:
+        st.session_state.use_during = False
+    if 'during_date_format' not in st.session_state:
+        st.session_state.during_date_format = "Full Date"
+    if 'start_date_format' not in st.session_state:
+        st.session_state.start_date_format = "Full Date"
+    if 'end_date_format' not in st.session_state:
+        st.session_state.end_date_format = "Full Date"
     
-    with date_col2:
-        st.markdown("**End Date**")
-        end_date = st.date_input(
-            "To Date",
-            value=None,
-            help="Show messages before this date (optional)",
-            key="end_date"
+    # During filter toggle
+    use_during = st.checkbox("Use 'during' filter (single date)", value=st.session_state.use_during, key="use_during_checkbox")
+    st.session_state.use_during = use_during
+    
+    if use_during:
+        # During filter section
+        st.markdown("**During Date**")
+        
+        # Initialize flags
+        if 'during_is_today' not in st.session_state:
+            st.session_state.during_is_today = False
+        if 'during_is_yesterday' not in st.session_state:
+            st.session_state.during_is_yesterday = False
+        if 'during_date' not in st.session_state:
+            st.session_state.during_date = datetime.now().date()
+        
+        # Quick date options
+        quick_date_col1, quick_date_col2 = st.columns(2)
+        with quick_date_col1:
+            use_today = st.button("Today", key="during_today_btn", use_container_width=True)
+        with quick_date_col2:
+            use_yesterday = st.button("Yesterday", key="during_yesterday_btn", use_container_width=True)
+        
+        # Handle quick date buttons
+        if use_today:
+            st.session_state.during_is_today = True
+            st.session_state.during_is_yesterday = False
+            st.rerun()
+        if use_yesterday:
+            st.session_state.during_is_today = False
+            st.session_state.during_is_yesterday = True
+            st.rerun()
+        
+        during_date_format = st.selectbox(
+            "Date format",
+            options=["Full Date", "Month", "Year"],
+            index=0 if st.session_state.during_date_format == "Full Date" else (1 if st.session_state.during_date_format == "Month" else 2),
+            key="during_date_format_select",
+            help="Choose how to format the date in the query (ignored if Today/Yesterday is selected)"
         )
-        use_end_time = st.checkbox("Include end time", key="use_end_time", value=False)
-        end_time = None
-        if use_end_time and end_date:
-            end_time = st.time_input(
-                "To Time",
-                value=time(23, 59),
-                help="Specify end time",
-                key="end_time"
+        st.session_state.during_date_format = during_date_format
+        
+        # If today/yesterday is selected, don't show date inputs
+        if not st.session_state.during_is_today and not st.session_state.during_is_yesterday:
+            if during_date_format == "Full Date":
+                during_date = st.date_input(
+                    "Date",
+                    value=st.session_state.during_date,
+                    help="Show messages during this date",
+                    key="during_date"
+                )
+                st.session_state.during_date = during_date
+            elif during_date_format == "Month":
+                months = ["January", "February", "March", "April", "May", "June",
+                         "July", "August", "September", "October", "November", "December"]
+                current_month_idx = datetime.now().month - 1
+                
+                selected_month_name = st.selectbox(
+                    "Month",
+                    options=months,
+                    index=current_month_idx,
+                    key="during_month_select"
+                )
+                selected_month_idx = months.index(selected_month_name) + 1
+                current_year = datetime.now().year
+                during_date = datetime(current_year, selected_month_idx, 1).date()
+            else:  # Year
+                current_year = datetime.now().year
+                years = list(range(current_year - 20, current_year + 21))
+                if 'during_year_only' not in st.session_state:
+                    st.session_state.during_year_only = current_year
+                if st.session_state.during_year_only not in years:
+                    st.session_state.during_year_only = current_year
+                selected_year = st.selectbox(
+                    "Year",
+                    options=years,
+                    index=years.index(st.session_state.during_year_only),
+                    key="during_year_only_select"
+                )
+                st.session_state.during_year_only = selected_year
+                during_date = datetime(st.session_state.during_year_only, 1, 1).date()
+        else:
+            during_date = datetime.now().date()  # Dummy value, won't be used
+        
+        # Set start/end to None when using during
+        start_date = None
+        start_is_today = False
+        start_is_yesterday = False
+        end_date = None
+        end_is_today = False
+        end_is_yesterday = False
+    else:
+        # Regular start/end date range
+        during_date = None
+        during_date_format = "Full Date"
+        during_is_today = False
+        during_is_yesterday = False
+    
+        # Initialize month/year selections
+        if 'start_month' not in st.session_state:
+            st.session_state.start_month = datetime.now().month
+        if 'start_year' not in st.session_state:
+            st.session_state.start_year = datetime.now().year
+        if 'end_month' not in st.session_state:
+            st.session_state.end_month = datetime.now().month
+        if 'end_year' not in st.session_state:
+            st.session_state.end_year = datetime.now().year
+        if 'start_year_only' not in st.session_state:
+            st.session_state.start_year_only = datetime.now().year
+        if 'end_year_only' not in st.session_state:
+            st.session_state.end_year_only = datetime.now().year
+        
+        # Initialize flags
+        if 'start_is_today' not in st.session_state:
+            st.session_state.start_is_today = False
+        if 'start_is_yesterday' not in st.session_state:
+            st.session_state.start_is_yesterday = False
+        if 'end_is_today' not in st.session_state:
+            st.session_state.end_is_today = False
+        if 'end_is_yesterday' not in st.session_state:
+            st.session_state.end_is_yesterday = False
+        
+        date_col1, date_col2 = st.columns(2)
+        
+        with date_col1:
+            st.markdown("**Start Date**")
+            
+            # Quick date options
+            quick_date_col1, quick_date_col2 = st.columns(2)
+            with quick_date_col1:
+                use_today_start = st.button("Today", key="start_today_btn", use_container_width=True)
+            with quick_date_col2:
+                use_yesterday_start = st.button("Yesterday", key="start_yesterday_btn", use_container_width=True)
+            
+            # Initialize start date
+            if 'start_date_value' not in st.session_state:
+                st.session_state.start_date_value = datetime.now().date()
+            
+            # Handle quick date buttons
+            if use_today_start:
+                st.session_state.start_is_today = True
+                st.session_state.start_is_yesterday = False
+                st.rerun()
+            if use_yesterday_start:
+                st.session_state.start_is_today = False
+                st.session_state.start_is_yesterday = True
+                st.rerun()
+            
+            start_date_format = st.selectbox(
+                "Start date format",
+                options=["Full Date", "Month", "Year"],
+                index=0 if st.session_state.start_date_format == "Full Date" else (1 if st.session_state.start_date_format == "Month" else 2),
+                key="start_date_format_select",
+                help="Choose how to format the start date in the query (ignored if Today/Yesterday is selected)"
             )
+            st.session_state.start_date_format = start_date_format
+            
+            # If today/yesterday is selected, don't show date inputs
+            if not st.session_state.start_is_today and not st.session_state.start_is_yesterday:
+                if start_date_format == "Full Date":
+                    start_date = st.date_input(
+                        "From Date",
+                        value=st.session_state.start_date_value,
+                        help="Show messages after this date",
+                        key="start_date"
+                    )
+                    st.session_state.start_date_value = start_date
+                elif start_date_format == "Month":
+                    months = ["January", "February", "March", "April", "May", "June",
+                             "July", "August", "September", "October", "November", "December"]
+                    # Get current month index
+                    current_month_idx = datetime.now().month - 1
+                    
+                    selected_month_name = st.selectbox(
+                        "Month",
+                        options=months,
+                        index=current_month_idx,
+                        key="start_month_select"
+                    )
+                    # Create date object from selected month (using current year, but year won't be used in query)
+                    selected_month_idx = months.index(selected_month_name) + 1
+                    current_year = datetime.now().year
+                    start_date = datetime(current_year, selected_month_idx, 1).date()
+                else:  # Year
+                    current_year = datetime.now().year
+                    years = list(range(current_year - 20, current_year + 21))
+                    # Ensure the year is in the list, otherwise use current year
+                    if st.session_state.start_year_only not in years:
+                        st.session_state.start_year_only = current_year
+                    selected_year = st.selectbox(
+                        "Year",
+                        options=years,
+                        index=years.index(st.session_state.start_year_only),
+                        key="start_year_only_select"
+                    )
+                    st.session_state.start_year_only = selected_year
+                    # Create a date object from year (January 1st)
+                    start_date = datetime(st.session_state.start_year_only, 1, 1).date()
+            else:
+                start_date = datetime.now().date()  # Dummy value, won't be used
+            
+            start_is_today = st.session_state.start_is_today
+            start_is_yesterday = st.session_state.start_is_yesterday
+        
+        with date_col2:
+            st.markdown("**End Date**")
+            
+            # Quick date options
+            quick_date_col1, quick_date_col2 = st.columns(2)
+            with quick_date_col1:
+                use_today_end = st.button("Today", key="end_today_btn", use_container_width=True)
+            with quick_date_col2:
+                use_yesterday_end = st.button("Yesterday", key="end_yesterday_btn", use_container_width=True)
+            
+            # Initialize end date
+            if 'end_date_value' not in st.session_state:
+                st.session_state.end_date_value = None
+            
+            # Handle quick date buttons
+            if use_today_end:
+                st.session_state.end_is_today = True
+                st.session_state.end_is_yesterday = False
+                st.rerun()
+            if use_yesterday_end:
+                st.session_state.end_is_today = False
+                st.session_state.end_is_yesterday = True
+                st.rerun()
+            
+            end_date_format = st.selectbox(
+                "End date format",
+                options=["Full Date", "Month", "Year"],
+                index=0 if st.session_state.end_date_format == "Full Date" else (1 if st.session_state.end_date_format == "Month" else 2),
+                key="end_date_format_select",
+                help="Choose how to format the end date in the query (ignored if Today/Yesterday is selected)"
+            )
+            st.session_state.end_date_format = end_date_format
+            
+            # If today/yesterday is selected, don't show date inputs
+            if not st.session_state.end_is_today and not st.session_state.end_is_yesterday:
+                if end_date_format == "Full Date":
+                    end_date = st.date_input(
+                        "To Date",
+                        value=st.session_state.end_date_value,
+                        help="Show messages before this date (optional)",
+                        key="end_date"
+                    )
+                    st.session_state.end_date_value = end_date
+                elif end_date_format == "Month":
+                    months = ["January", "February", "March", "April", "May", "June",
+                             "July", "August", "September", "October", "November", "December"]
+                    # Get current month index
+                    current_month_idx = datetime.now().month - 1
+                    
+                    selected_month_name = st.selectbox(
+                        "Month",
+                        options=months,
+                        index=current_month_idx,
+                        key="end_month_select"
+                    )
+                    # Create date object from selected month (using current year, but year won't be used in query)
+                    selected_month_idx = months.index(selected_month_name) + 1
+                    current_year = datetime.now().year
+                    end_date = datetime(current_year, selected_month_idx, 1).date()
+                else:  # Year
+                    current_year = datetime.now().year
+                    years = list(range(current_year - 20, current_year + 21))
+                    # Ensure the year is in the list, otherwise use current year
+                    if st.session_state.end_year_only not in years:
+                        st.session_state.end_year_only = current_year
+                    selected_year = st.selectbox(
+                        "Year",
+                        options=years,
+                        index=years.index(st.session_state.end_year_only),
+                        key="end_year_only_select"
+                    )
+                    st.session_state.end_year_only = selected_year
+                    # Create a date object from year (January 1st)
+                    end_date = datetime(st.session_state.end_year_only, 1, 1).date()
+            else:
+                end_date = datetime.now().date()  # Dummy value, won't be used
+            
+            end_is_today = st.session_state.end_is_today
+            end_is_yesterday = st.session_state.end_is_yesterday
 else:
     start_date = None
-    start_time = None
+    start_date_format = "Full Date"
     end_date = None
-    end_time = None
+    end_date_format = "Full Date"
+    use_during = False
+    during_date = None
+    during_date_format = "Full Date"
 
 # Query Output Section
 st.header("📝 Generated Query")
@@ -257,10 +536,19 @@ query = build_query(
     from_user,
     file_type,
     date_enabled,
-    start_date,
-    start_time,
-    end_date,
-    end_time,
+    use_during if date_enabled else False,
+    during_date if date_enabled else None,
+    during_date_format if date_enabled else "Full Date",
+    during_is_today if date_enabled else False,
+    during_is_yesterday if date_enabled else False,
+    start_date if date_enabled else None,
+    start_date_format if date_enabled else "Full Date",
+    start_is_today if date_enabled else False,
+    start_is_yesterday if date_enabled else False,
+    end_date if date_enabled else None,
+    end_date_format if date_enabled else "Full Date",
+    end_is_today if date_enabled else False,
+    end_is_yesterday if date_enabled else False,
     keywords
 )
 
